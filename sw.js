@@ -1,5 +1,5 @@
 // Kasa Defteri – çevrimdışı çalışma için önbellek
-var CACHE = 'kasa-v1';
+var CACHE = 'kasa-v2';
 var FILES = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', function (e) {

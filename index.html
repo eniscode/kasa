@@ -79,6 +79,10 @@ h2{font-size:15px;color:var(--muted);font-weight:600;margin:18px 2px 8px;text-tr
 .days .row .a{font-size:15px}
 .days .row .t small{white-space:normal}
 
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--chip);border-radius:14px;padding:4px;margin:6px 0 4px}
+.seg button{height:40px;border-radius:11px;font-weight:600;color:var(--muted)}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+
 /* ayarlar */
 .card{background:var(--card);box-shadow:var(--shadow);border-radius:16px;padding:14px}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
@@ -153,6 +157,7 @@ h2{font-size:15px;color:var(--muted);font-weight:600;margin:18px 2px 8px;text-tr
 
   <!-- RAPOR -->
   <section id="v-rapor" class="hidden">
+    <div class="seg" id="rSeg"><button data-mode="ay" class="on">Aylık</button><button data-mode="yil">Yıllık</button></div>
     <div class="nav">
       <button class="arrow" id="mPrev" aria-label="Önceki ay">‹</button>
       <div class="label" id="mLabel"></div>
@@ -167,9 +172,9 @@ h2{font-size:15px;color:var(--muted);font-weight:600;margin:18px 2px 8px;text-tr
     <div class="list bars" id="mGelir"></div>
     <h2>Gider dağılımı</h2>
     <div class="list bars" id="mGider"></div>
-    <h2>Günler</h2>
+    <h2 id="mListTitle">Günler</h2>
     <div class="list days" id="mDays"></div>
-    <p class="note">Bir güne dokununca o günün kayıtları açılır.</p>
+    <p class="note" id="mListNote">Bir güne dokununca o günün kayıtları açılır.</p>
   </section>
 
   <!-- AYARLAR -->
@@ -276,6 +281,8 @@ function sum(list,type){var s=0;list.forEach(function(e){if(e.type===type)s+=e.a
 /* ---------- durum ---------- */
 var curDay=today();
 var curMonth=today().slice(0,7);
+var curYear=today().slice(0,4);
+var rMode='ay';
 
 /* ---------- günlük ekran ---------- */
 function renderDay(){
@@ -365,7 +372,7 @@ function shiftMonth(m,n){var p=m.split('-');var d=new Date(+p[0],+p[1]-1+n,1);re
 function bars(list,type){
   var by={};list.forEach(function(e){if(e.type===type)by[e.cat]=(by[e.cat]||0)+e.amount});
   var keys=Object.keys(by).sort(function(a,b){return by[b]-by[a]});
-  if(!keys.length)return '<div class="empty">Bu ay kayıt yok.</div>';
+  if(!keys.length)return '';
   var tot=keys.reduce(function(s,k){return s+by[k]},0);
   return keys.map(function(k){
     var p=Math.round(by[k]/tot*100);
@@ -374,27 +381,47 @@ function bars(list,type){
   }).join('');
 }
 function renderMonth(){
-  var p=curMonth.split('-');
-  $('mLabel').textContent=new Date(+p[0],+p[1]-1,1).toLocaleDateString('tr-TR',{month:'long',year:'numeric'});
-  $('mNext').style.visibility=curMonth>=today().slice(0,7)?'hidden':'visible';
-  var list=db.entries.filter(function(e){return e.date.slice(0,7)===curMonth});
+  var yil=rMode==='yil';
+  [].forEach.call($('rSeg').children,function(b){b.classList.toggle('on',b.getAttribute('data-mode')===rMode)});
+  var list;
+  if(yil){
+    $('mLabel').textContent=curYear;
+    $('mNext').style.visibility=curYear>=today().slice(0,4)?'hidden':'visible';
+    list=db.entries.filter(function(e){return e.date.slice(0,4)===curYear});
+  }else{
+    var p=curMonth.split('-');
+    $('mLabel').textContent=new Date(+p[0],+p[1]-1,1).toLocaleDateString('tr-TR',{month:'long',year:'numeric'});
+    $('mNext').style.visibility=curMonth>=today().slice(0,7)?'hidden':'visible';
+    list=db.entries.filter(function(e){return e.date.slice(0,7)===curMonth});
+  }
   var g=sum(list,'gelir'),r=sum(list,'gider');
   $('mG').textContent=fmt(g);$('mR').textContent=fmt(r);$('mN').textContent=fmt(g-r);
   $('mN').className=g-r<0?'r':'g';
-  $('mGelir').innerHTML=bars(list,'gelir');
-  $('mGider').innerHTML=bars(list,'gider');
-  var days={};list.forEach(function(e){var d=days[e.date]=days[e.date]||{g:0,r:0};d[e.type==='gelir'?'g':'r']+=e.amount});
-  var ks=Object.keys(days).sort().reverse();
+  var none='<div class="empty">'+(yil?'Bu yıl':'Bu ay')+' kayıt yok.</div>';
+  $('mGelir').innerHTML=bars(list,'gelir')||none;
+  $('mGider').innerHTML=bars(list,'gider')||none;
+  var groups={},keyLen=yil?7:10;
+  list.forEach(function(e){var k=e.date.slice(0,keyLen);var d=groups[k]=groups[k]||{g:0,r:0};d[e.type==='gelir'?'g':'r']+=e.amount});
+  var ks=Object.keys(groups).sort().reverse();
+  $('mListTitle').textContent=yil?'Aylar':'Günler';
+  $('mListNote').textContent=yil?'Bir aya dokununca o ayın raporu açılır.':'Bir güne dokununca o günün kayıtları açılır.';
   $('mDays').innerHTML=ks.length?ks.map(function(k){
-    var d=days[k];
-    return '<button class="row" data-day="'+k+'"><span class="t"><div>'+parseD(k).toLocaleDateString('tr-TR',{day:'numeric',month:'long',weekday:'short'})+'</div>'+
+    var d=groups[k],label;
+    if(yil){var q=k.split('-');label=new Date(+q[0],+q[1]-1,1).toLocaleDateString('tr-TR',{month:'long'});label=label.charAt(0).toLocaleUpperCase('tr')+label.slice(1)}
+    else label=parseD(k).toLocaleDateString('tr-TR',{day:'numeric',month:'long',weekday:'short'});
+    return '<button class="row" data-'+(yil?'month':'day')+'="'+k+'"><span class="t"><div>'+label+'</div>'+
       '<small><span class="g">+'+fmt(d.g)+'</span> · <span class="r">−'+fmt(d.r)+'</span></small></span>'+
       '<span class="a'+(d.g-d.r<0?' r':'')+'">'+fmt(d.g-d.r)+'</span></button>';
-  }).join(''):'<div class="empty">Bu ay kayıt yok.</div>';
+  }).join(''):none;
 }
-$('mPrev').onclick=function(){curMonth=shiftMonth(curMonth,-1);renderMonth()};
-$('mNext').onclick=function(){curMonth=shiftMonth(curMonth,1);renderMonth()};
-$('mDays').onclick=function(ev){var b=ev.target.closest('[data-day]');if(!b)return;curDay=b.getAttribute('data-day');showTab('gun')};
+$('rSeg').onclick=function(ev){var b=ev.target.closest('[data-mode]');if(!b)return;rMode=b.getAttribute('data-mode');renderMonth()};
+$('mPrev').onclick=function(){if(rMode==='yil')curYear=String(+curYear-1);else curMonth=shiftMonth(curMonth,-1);renderMonth()};
+$('mNext').onclick=function(){if(rMode==='yil')curYear=String(+curYear+1);else curMonth=shiftMonth(curMonth,1);renderMonth()};
+$('mDays').onclick=function(ev){
+  var m=ev.target.closest('[data-month]');
+  if(m){rMode='ay';curMonth=m.getAttribute('data-month');renderMonth();window.scrollTo(0,0);return}
+  var b=ev.target.closest('[data-day]');if(!b)return;curDay=b.getAttribute('data-day');showTab('gun');
+};
 
 /* ---------- ayarlar ---------- */
 function renderSettings(){
@@ -479,7 +506,7 @@ $('impFile').onchange=function(){
 function showTab(t){
   ['gun','rapor','ayar'].forEach(function(x){$('v-'+x).classList.toggle('hidden',x!==t)});
   [].forEach.call(document.querySelectorAll('.tabs button'),function(b){b.classList.toggle('on',b.getAttribute('data-tab')===t)});
-  $('title').textContent={gun:'Kasa Defteri',rapor:'Aylık Rapor',ayar:'Ayarlar'}[t];
+  $('title').textContent={gun:'Kasa Defteri',rapor:'Rapor',ayar:'Ayarlar'}[t];
   renderAll();window.scrollTo(0,0);
 }
 [].forEach.call(document.querySelectorAll('.tabs button'),function(b){b.onclick=function(){showTab(b.getAttribute('data-tab'))}});
